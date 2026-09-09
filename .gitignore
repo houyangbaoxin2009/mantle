@@ -1,0 +1,20 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Runtime / worlds
+run/
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config with secrets
+local.properties
