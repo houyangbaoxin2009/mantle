@@ -24,13 +24,14 @@ NeoForge 生态的模组化并发服务器 —— **clean-room 自研**：受 **
 
 ## Status
 
-骨架初始化完成，尚未引入代码。规划（草案，编号 p 轨）：
+骨架 + **p.0.1 摸底已落地（2026-09-09）**：决策文档
+[docs/plans/p0.1-decision.md](docs/plans/p0.1-decision.md)（trm-lite 底座映射 / 加载桥接缝 /
+Forge 暂缓建议 / 通信栈决策 / 合规清单）；ABI 冒烟与跨语言一帧互通探针全绿
+（[abi-smoke/](abi-smoke/)，tie DLL→Java FFM + tink v2 帧双向字节一致）。
+规划（编号 p 轨）：
 
-* p.0.1 —— 摸底与定策：tie 并发能力现状（actor 1:1 / **trm-lite preview.3** Go 式 M:N 常驻池：
-  spawn + channel + WaitGroup + 协作抢占 + race 纪律 S1–S4）与语言间 ABI（Java FFM → tie
-  任务/通道；线程亲和）、NeoForge 模组装载链桥（外部依赖，不并源码）、**生态支持矩阵**
-  （Fabric 适配层可行性、Forge 路线仲裁）、通信三件套与 **Subterra engine.network**
-  （tink v2 / tsha1f / zd / x25519+AEAD，规范同源）对接点、许可与合规清单
+* p.0.1 —— **✅ 已落地**（见上决策文档与 abi-smoke 探针；原摸底范围清单归档于交接提示词
+  [prompt-mantle-p0.1.md](docs/plans/prompt-mantle-p0.1.md)）
 * p.0.2 —— 工程骨架：构建体系、能开服、确定性开服门禁（事件驱动 marker，沿用 Subterra 范式）
 * p.0.3 —— **region 调度自研（clean-room，tie 原生）**：以 trm-lite 为底座（region tick = spawn
   任务、跨 region 消息 = channel、生命周期 = WaitGroup；actor 作强隔离备选）+ 确定性探针
