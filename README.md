@@ -26,11 +26,14 @@ NeoForge 生态的模组化并发服务器 —— **clean-room 自研**：受 **
 
 骨架初始化完成，尚未引入代码。规划（草案，编号 p 轨）：
 
-* p.0.1 —— 摸底与定策：Folia / Paper region 调度设计梳理（仅设计，不拷贝）、NeoForge 模组装载链桥
-  （外部依赖，不并源码）、**生态支持矩阵**（Fabric 适配层可行性、Forge 路线仲裁）、通信三件套范围、
-  许可与合规清单
+* p.0.1 —— 摸底与定策：tie 并发能力现状（actor 1:1 / **trm-lite preview.3** Go 式 M:N 常驻池：
+  spawn + channel + WaitGroup + 协作抢占 + race 纪律 S1–S4）与语言间 ABI（Java FFM → tie
+  任务/通道；线程亲和）、NeoForge 模组装载链桥（外部依赖，不并源码）、**生态支持矩阵**
+  （Fabric 适配层可行性、Forge 路线仲裁）、通信三件套与 **Subterra engine.network**
+  （tink v2 / tsha1f / zd / x25519+AEAD，规范同源）对接点、许可与合规清单
 * p.0.2 —— 工程骨架：构建体系、能开服、确定性开服门禁（事件驱动 marker，沿用 Subterra 范式）
-* p.0.3 —— region 调度自研（clean-room）：调度器独立实现 + 确定性探针
+* p.0.3 —— **region 调度自研（clean-room，tie 原生）**：以 trm-lite 为底座（region tick = spawn
+  任务、跨 region 消息 = channel、生命周期 = WaitGroup；actor 作强隔离备选）+ 确定性探针
 * p.0.4 —— 通信三件套：玩家增强通道 / 跨线程调度通信 / P2P 互联（可配置）
 * p.0.5 —— 验收与发布基座：全量门禁 + 合规声明清单
 
