@@ -15,6 +15,16 @@ contributors）。Folia 分叉部分代码按 **MIT License** 条款授权使用
 Mantle 通过构建期/运行期依赖引用 NeoForge 组件（模组装载链等相关 artifact），
 **不**将 NeoForge 源码并入本仓库。相关 artifact 遵循 LGPL-2.1，见其上游仓库。
 
+## Fabric Loader / Fabric API — Apache-2.0 (external dependency)
+
+Fabric 适配层引用 Fabric Loader 与（必要时）Fabric API 相关 artifact，**不**将源码并入本仓库；
+遵循 Apache License 2.0，见其上游仓库。适配层机制参照 **Sinytra Connector**（MIT License，
+实现时按其许可保留声明，不直接拷贝）。
+
+## Forge — GNU LGPL v2.1 (external dependency only)
+
+Forge 路线（如经摸底仲裁采用）同样只作构建期/运行期外部依赖引用，遵守 LGPL-2.1，见其上游仓库。
+
 ## Other
 
 构建产生的传递依赖（如 netty 等）遵循各自上游许可，随构建产物附带。

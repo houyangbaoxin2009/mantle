@@ -1,20 +1,33 @@
 # Mantle / 地幔
 
 NeoForge 生态的模组化并发服务器 —— 分叉自 **Folia**（PaperMC，MIT），继承 region
-分区多线程调度（Knot / Region / Entity 调度器 + 跨线程任务通信）；融合 **NeoForge**
-模组生态（**仅作外部依赖，不并入本仓库源码**）；内置**增强互联**：
-玩家网络层增强通道（tink v2 帧 + tsha1f 强校验 + zd 载荷 + x25519/AEAD）、
-跨线程调度通信、服务端间 P2P 互联（可配置开关）。
+分区多线程调度（Knot / Region / Entity 调度器 + 跨线程任务通信）；以 **NeoForge 为宿主**
+承载模组生态（**FML 仅作外部依赖，不并入本仓库源码**）；并支持 **Paper 插件 / Fabric 模组 /
+Forge 模组**（宿主 + 适配层模型，见下）；内置**增强互联**：玩家网络层增强通道
+（tink v2 帧 + tsha1f 强校验 + zd 载荷 + x25519/AEAD）、跨线程调度通信、服务端间 P2P 互联
+（可配置开关）。
 
 与同谱系项目：**Subterra**（模组框架，运行于 NeoForge，本服务器承载其运行）、
 **Toterra**（主模组）、**tie / tink / zd**（语言与网络协议生态）。
+
+## Ecosystem support / 生态支持（宿主 + 适配层模型）
+
+四个生态互不直接共存（Fabric / Forge 与 NeoForge 都改造原版内部），因此 Mantle 只以
+**NeoForge 为宿主**，其余生态经适配层接入：
+
+| 生态 | 路线 | 许可 |
+|------|------|------|
+| Paper 插件 | 原生继承（Folia 血统自带 Paper Plugin API；region 线程模型对旧插件 API 有约束，随 Folia） | MIT 分叉部分 |
+| NeoForge 模组 | 宿主加载链：FML（fancymodloader）外部依赖驱动 mod 装载，不并源码 | LGPL-2.1 外部依赖 |
+| Fabric 模组 | 适配层：Connector 式兼容桥（Fabric Loader / Fabric API 外部依赖；机制参照 Sinytra Connector） | Apache-2.0 外部依赖 / MIT 参照 |
+| Forge 模组 | 摸底仲裁：1.20.2+ Forge 与 NeoForge 分流后兼容桥面大，可能需限版本窗口或桥层取舍 | LGPL-2.1 外部依赖 |
 
 ## Status
 
 骨架初始化完成，尚未引入代码。规划（草案，编号 p 轨）：
 
-* p.0.1 —— 摸底与定策：Folia 与 NeoForge 生态差异分析、NeoForge 模组装载链桥（外部依赖，
-  不并源码）、通信三件套范围、许可与合规清单
+* p.0.1 —— 摸底与定策：Folia 与各生态差异分析、NeoForge 模组装载链桥（外部依赖，不并源码）
+  、**生态支持矩阵**（Fabric 适配层可行性、Forge 路线仲裁）、通信三件套范围、许可与合规清单
 * p.0.2 —— 工程骨架：构建体系、能开服、确定性开服门禁（事件驱动 marker，沿用 Subterra 范式）
 * p.0.3 —— region 调度移植：调度器迁移 + 确定性探针
 * p.0.4 —— 通信三件套：玩家增强通道 / 跨线程调度通信 / P2P 互联（可配置）
