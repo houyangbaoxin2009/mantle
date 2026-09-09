@@ -1,0 +1,5 @@
+# 构建产物（EN: build artifacts）
+*.class
+tie_side/*.exe
+tie_src/std/*.a
+out/

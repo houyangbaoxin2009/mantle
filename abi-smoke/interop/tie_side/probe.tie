@@ -1,0 +1,183 @@
+type tie<logic>
+// tie_side/probe.tie —— p.0.1.4 跨语言 tink v2 一帧互通探针（tie 侧）
+// ============================================================
+// 职责（Roles）：
+//   1) 自证 tsha1f 金向量（tie 侧独立输出，与常量互核）；
+//   2) 对固定载荷用 std/tink_v2.frame_encode 编一帧快校验帧（flags=0），
+//      打印帧 hex + 该载荷的 tsha1f(8) 串；
+//   3) 对给定帧 hex 用 std/tink_v2.frame_next 解析，打印 ok / integrity_ok。
+// 通信用行协议（line-based over stdin/stdout，ASCII）：
+//   en:<ascii-payload>   → 编码并打印 FRAME:<hex> 与 FAST:<tsha1f(8)>
+//   pa:<frame-hex>       → 解析并打印 PARSED:ok=<0/1> iok=<0/1>
+//   gv                   → 打印金向量自证行（GOLD:...:OK/FAIL）
+//   EOF                  → 退出，返回码 g_rc（任一 FAIL 置 1）
+// EN: tie-side interop probe for p.0.1.4. Line protocol over stdin/stdout:
+//   "en:" encode fast frame + print FRAME hex and FAST tsha1f(8);
+//   "pa:" parse a frame hex via frame_next and print ok/integrity_ok.
+// Vendored std (tie-main, sound-license) lives under ../tie_src/ — see its NOTICE.
+
+import "../tie_src/std/tink_v2.tie" as t2
+import "../tie_src/std/tsha1.tie" as tsha
+
+// 全局返回码：任一 FAIL 置 1（EN: any FAIL sets rc=1）。
+var g_rc: i64 = 0
+
+// ---- hex 字符台（EN: hex alphabet for encode/decode）
+var HEXC: string = "0123456789abcdef"
+
+// ASCII 字符串 → 字节表（EN: ASCII string → byte table）
+func ascii(s: string) -> table<i64> {
+    var o = table_new_i64()
+    var i: i64 = 0
+    while i < str_len(s) {
+        table_push(o, char_code(str_char(s, i)))
+        i = i + 1
+    }
+    return o
+}
+
+// hex 串 → 字节表（两字符一组；EN: hex string → byte table)
+func hexb(s: string) -> table<i64> {
+    var o = table_new_i64()
+    var n = str_len(s)
+    var i: i64 = 0
+    while i < n {
+        var hv: i64 = hexv(str_char(s, i))
+        var lv: i64 = 0
+        if i + 1 < n { lv = hexv(str_char(s, i + 1)) }
+        table_push(o, ((hv & 15) << 4) | (lv & 15))
+        i = i + 2
+    }
+    return o
+}
+
+// 单 hex 字符 → 数值（EN: one hex char → value）
+func hexv(c: string) -> i64 {
+    var cp = char_code(c)
+    if cp >= 48 && cp <= 57 { return cp - 48 }
+    if cp >= 97 && cp <= 102 { return cp - 97 + 10 }
+    if cp >= 65 && cp <= 70 { return cp - 65 + 10 }
+    return 0
+}
+
+// 字节表 → 小写 hex 串（EN: byte table → lowercase hex string）
+func hexs(t: table<i64>) -> string {
+    var o: string = ""
+    var n = len(t)
+    var i: i64 = 0
+    while i < n {
+        var v = t[i] & 0xFF
+        o = o + str_char(HEXC, (v >> 4) & 15) + str_char(HEXC, v & 15)
+        i = i + 1
+    }
+    return o
+}
+
+// 前缀判断（EN: whether s starts with prefix p)
+func startswith(s: string, p: string) -> bool {
+    var sl = str_len(s)
+    var pl = str_len(p)
+    if pl > sl { return false }
+    var i: i64 = 0
+    while i < pl {
+        if str_char(s, i) != str_char(p, i) { return false }
+        i = i + 1
+    }
+    return true
+}
+
+// 从索引 off 起的子串（EN: substring from index off to end）
+func tailn(s: string, off: i64) -> string {
+    var o: string = ""
+    var i: i64 = off
+    while i < str_len(s) {
+        o = o + str_char(s, i)
+        i = i + 1
+    }
+    return o
+}
+
+// 取 tsha1f 串的前 n 个符号（n≤len；EN: first n symbols of the tsha1f string)
+func firstn(s: string, n: i64) -> string {
+    var o: string = ""
+    var i: i64 = 0
+    while i < n {
+        o = o + str_char(s, i)
+        i = i + 1
+    }
+    return o
+}
+
+// 强档金向量：全宽 hex 前 64 字符（EN: strong golden digest: first 64 hex chars）
+func strong64(s: string) -> string {
+    return firstn(tsha.tsha1_digest("f", s, 48), 64)
+}
+
+// ---- 金向量自证（EN: golden-vector self-assertion）
+func golden() {
+    // 快：tsha1f(msg, 8, 48)（EN: fast, 8 symbols, base 48）
+    var k_empty = tsha.tsha1f("", 8, 48)
+    var k_nine = tsha.tsha1f("123456789", 8, 48)
+    var k_abc = tsha.tsha1f("abc", 8, 48)
+    var a64 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" // "a"*64
+    var k_a64 = tsha.tsha1f(a64, 8, 48)
+    // 强：digest("f","123456789",48) 前 64 hex（EN: strong, first 64 hex）
+    var k_strong = strong64("123456789")
+    println("GOLD:EMPTY:" + k_empty + ":" + boolmark(k_empty == "5juavlyl"))
+    println("GOLD:NINE:" + k_nine + ":" + boolmark(k_nine == "3Kz1piuc"))
+    println("GOLD:ABC:" + k_abc + ":" + boolmark(k_abc == "5FGIxu1J"))
+    println("GOLD:A64:" + k_a64 + ":" + boolmark(k_a64 == "5juavlyl"))
+    println("GOLD:STRONG:" + k_strong + ":" + boolmark(k_strong == "260c7340bcc60eb82c727e6df6f9c7620d040c2d4837ee96dc333f1a16fd76bf"))
+}
+
+// 布尔标记（EN: boolean marker OK/FAIL）
+func boolmark(b: bool) -> string {
+    if b { return "OK" }
+    return "FAIL"
+}
+
+// 编码一帧快校验帧：frame_encode(payload, flags=0, ext=空)（EN: encode fast frame）
+func doEncode(p: table<i64>) -> (string, string) {
+    var fr = t2.frame_encode(p, 0, table_new_i64())
+    var fhex = hexs(fr)                       // 帧 hex（EN: frame hex）
+    var fast = tsha.tsha1f(string_from_bytes(p), 8, 48) // 载荷 tsha1f(8) 串
+    return (fhex, fast)
+}
+
+// 把字节表精确还原为二进制安全字符串（逐字节 sb_append；EN: bytes → binary-safe string）
+// 注：bytes.from_ascii 只处理 ASCII；此处仿 tink_v2.payload_str 用 string_builder
+// 逐字节构串，保证与帧校验内部的载荷串一致（含 0x00/0xFF/中文 UTF-8）。
+func string_from_bytes(p: table<i64>) -> string {
+    var sb = string_builder()
+    var n = len(p)
+    var i: i64 = 0
+    while i < n {
+        sb_append_byte(sb, p[i] & 0xFF)
+        i = i + 1
+    }
+    return sb_build(sb)
+}
+
+func main() -> i64 {
+    golden()
+    // 逐行命令循环（EN: per-line command loop over stdin）
+    var line = read_line()
+    while str_len(line) > 0 {
+        if line == "gv" {
+            golden()
+        } else if startswith(line, "en:") {
+            var payload_s = tailn(line, 3)
+            var (fhex, fast) = doEncode(ascii(payload_s))
+            println("FRAME:" + fhex)
+            println("FAST:" + fast)
+        } else if startswith(line, "pa:") {
+            var frame_bytes = hexb(tailn(line, 3))
+            var (ok, fl, el, pl, ex, iok, npos) = t2.frame_next(frame_bytes, 0)
+            println("PARSED:ok=" + to_string(ok) + " iok=" + to_string(iok) + " np=" + to_string(npos))
+        } else {
+            println("UNREC:" + line)
+        }
+        line = read_line()
+    }
+    return g_rc
+}
