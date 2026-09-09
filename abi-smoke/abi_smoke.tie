@@ -1,0 +1,170 @@
+type tie<class>
+// abi-smoke/abi_smoke.tie —— Mantle p.0.1.2 ABI 冒烟 shim（tie → DLL → Java 25 FFM）
+// ============================================================
+// 目标：把 trm-lite 的并发（spawn + channel + WaitGroup）包成一组「标量/string 边界」
+// 的导出 `pub func`，由 Java 侧通过 FFM 驱动并做确定性断言（不依赖墙钟）。
+//
+// 形态选择：**简单形态**（tiec 内置原语 spawn/yield/collect + ch_* + wg_* 内置，
+// 经 TIE_TRM_LITE_LIB 静态链接 trm_lite.a）。
+//
+// WHY NOT 复杂形态（import tl_runtime_ctx）：
+//   复杂形态把 tl_runtime_ctx / trm_lite_ws / trm_lite_tgc / trm_lite_chan /
+//   trm_lite_wg 的 pub func 导入并纳入 DLL 导出面校验。其中 `trm_lite_ws::spawn`
+//   参数类型为 `fn() -> i64`（函数值），不属于可跨动态库边界的类型，tiec 在 DLL
+//   模式下直接拒绝：
+//     IR 生成失败: 动态库边界错误: 导出函数 trm_lite_ws::spawn 参数类型
+//     'fn() -> i64' 不能跨动态库边界（仅标量/string/slice/repr(C) pod struct 可跨库）
+//   因此「复杂形态 → DLL」在本版 tiec preview.6 上属硬阻塞，记为开放 ABI 项
+//   （见 README「开放 ABI 项」）。本 shim 落地为简单形态回退并保持全绿。
+//
+// 边界铁律：导出签名一律仅标量（i64）与 string；所有并发（spawn/wg/channel 任务体）
+// 都发生在 tie 内部，Java 仅触发与读取确定性状态。
+//
+// 命名说明：内置原语（wg_new/wg_add/wg_done/.../ch_open/...）为编译器内建、以裸名
+// 调用。为避开命名空间成员的遮蔽歧义，统一经由私有顶层包装 `b_*`（不与内建名冲突）
+// 中转；命名空间导出的 `abi$wg_*`/`abi$ch_*` 只做薄转发，保持清晰 API 面。
+// 注意：编译器内建仅实现 wg_new/wg_add/wg_done/wg_wait，**没有 wg_count**；
+// 故 wg_count 由本 shim 计数镜像（g_wgcnt）提供（唯一调用方即本模块，镜像与真实
+// WaitGroup 同步增减，如实文档化）。
+//
+// 已知 tie 缺陷规避（沿用 README）：
+//   - 标量全局初值静默丢弃（`=4` 实为 0）：本文件仅写不使用初值，起始即 0，无影响。
+//   - 单行块语句须以 `;` 结尾：已遵守。
+//   - 多行语句一律花括号块。
+
+// ---- 私有顶层包装（桥接内置原语，非导出）----
+func b_wg_new() -> i64 {
+    g_wgcnt = 0
+    return wg_new()
+}
+func b_wg_add(h: i64, n: i64) -> i64 {
+    wg_add(h, n)
+    g_wgcnt = g_wgcnt + n
+    return 0
+}
+func b_wg_done(h: i64) -> i64 {
+    wg_done(h)
+    if g_wgcnt > 0 {
+        g_wgcnt = g_wgcnt - 1
+    }
+    return 0
+}
+func b_wg_count(h: i64) -> i64 {
+    return g_wgcnt
+}
+func b_ch_open() -> i64 {
+    return ch_open()
+}
+func b_ch_send(ch: i64, v: i64) -> i64 {
+    return ch_send(ch, v)
+}
+func b_ch_recv(ch: i64) -> i64 {
+    return ch_recv(ch)
+}
+func b_ch_close(ch: i64) -> i64 {
+    ch_close(ch)
+    return 0
+}
+
+// ---- 模块级运行时状态（全部在 tie 内部，不跨 DLL 边界）----
+var g_comp: i64 = 0   // 已执行任务计数（确定性执行证据）
+var g_fail: i64 = 0   // 仅「意外失败路径」递增的计数（全绿断言期望 0）
+var g_wg: i64 = 0     // 内部 WaitGroup 句柄（run 内使用）
+var g_wgcnt: i64 = 0  // WaitGroup 计数镜像（补内建缺 wg_count 之弊）
+
+// 确定性任务体：自增完成计数，并对内部 WaitGroup 做 done。
+// 任务体不跨边界——spawn 与 wg_done 均在 tie 内部执行。
+func task_inc() -> i64 {
+    g_comp = g_comp + 1
+    if g_wg > 0 {
+        b_wg_done(g_wg)
+    }
+    return g_comp
+}
+
+namespace abi {
+
+// 运行时自举确认：返回 0。
+pub func ensure() -> i64 {
+    return 0
+}
+
+// 简单形态下调度池不可配置（复杂形态 ctx_set_workers 专属）。
+// 接受入参并以 no-op 返回 0，如实文档化：worker 池为复杂形态能力。
+pub func set_workers(n: i64) -> i64 {
+    return 0
+}
+
+// 确定性并发执行证据：
+//   spawn n 个 task_inc → 内部 wg_add(n) → yield() 排空就绪队列（协作式、
+//   单 OS 线程序序执行，每个任务完整跑到下一个让出点）→ 返回 g_comp（== n）。
+pub func run(n: i64) -> i64 {
+    g_comp = 0
+    g_fail = 0
+    g_wg = b_wg_new()
+    var i: i64 = 0
+    while i < n {
+        b_wg_add(g_wg, 1)
+        spawn(task_inc)
+        i = i + 1
+    }
+    yield()
+    yield()
+    return g_comp
+}
+
+// 已完成任务数（简单形态等效于复杂形态 ctx_completed；= n 即 run 的确定性证据）。
+pub func completed() -> i64 {
+    return g_comp
+}
+
+// 常驻 worker 池线程数。简单形态为协作式 M:N，常驻单一线程，恒为 1。
+// （复杂形态的多 OS 线程池为其专属能力，见 README「开放 ABI 项」。）
+pub func pool_threads() -> i64 {
+    return 1
+}
+
+// ---------- WaitGroup（内置 wg_*）----------
+pub func wg_new() -> i64 {
+    return b_wg_new()
+}
+pub func wg_add(h: i64, n: i64) -> i64 {
+    return b_wg_add(h, n)
+}
+pub func wg_done(h: i64) -> i64 {
+    return b_wg_done(h)
+}
+pub func wg_count(h: i64) -> i64 {
+    return b_wg_count(h)
+}
+
+// ---------- Channel（内置 ch_*）----------
+pub func ch_open() -> i64 {
+    return b_ch_open()
+}
+pub func ch_send(ch: i64, v: i64) -> i64 {
+    var r = b_ch_send(ch, v)
+    if r != 0 {
+        g_fail = g_fail + 1
+    }
+    return r
+}
+pub func ch_recv(ch: i64) -> i64 {
+    return b_ch_recv(ch)
+}
+pub func ch_close(ch: i64) -> i64 {
+    return b_ch_close(ch)
+}
+
+// 仅失败路径递增的计数（意外 ch_send 失败）。全绿断言期望 0。
+pub func fail_count() -> i64 {
+    return g_fail
+}
+
+// 版本码（i64）。注：tie 字符串返回跨 DLL 边界的 FFM 解码布局尚未被探针验证过
+//（recon 仅实打实走通 i64），故本 shim 以版本码替代 string 返回，把「string 返回」记为
+// 开放 ABI 项（见 README）。0x0003_0000 = 简单形态 trm-lite 0.3.0。
+pub func version() -> i64 {
+    return 0x00030000
+}
+}
